@@ -661,6 +661,7 @@ def build_eval_records(
                     "cri": 0.0,
                     "sad_flag": False,
                     "security_scan_failed": False,
+                    "security_scan_error": None,
                     "security_scan_scope": "skipped_infra_timeout_before_patch",
                     "security_report_found": False,
                     "tau": tau_step,
@@ -694,6 +695,7 @@ def build_eval_records(
                     "cri": 0.0,
                     "sad_flag": False,
                     "security_scan_failed": False,
+                    "security_scan_error": None,
                     "security_scan_scope": "skipped_infra_timeout_before_patch",
                     "security_report_found": False,
                     "tau": tau_step,
@@ -721,6 +723,7 @@ def build_eval_records(
             security_scan_scope = "diff_fragment_fallback_v2"
             security_violations: List[str] = []
             security_scan_failed = False
+            security_scan_error: Optional[str] = None
 
             if security_reports_dir is not None:
                 report_path = security_reports_dir / f"{instance_id}.json"
@@ -731,19 +734,24 @@ def build_eval_records(
                         security_scan_scope = str(report.get("scan_scope", "postapply_fullfile_delta_v1"))
                         security_scan_failed = bool(report.get("scan_failed", False))
                         security_violations = report.get("new_violations") or []
+                        security_scan_error = report.get("scan_error")
                     except Exception:
                         security_scan_scope = "postapply_fullfile_delta_v1"
                         security_scan_failed = True
                         security_violations = []
+                        security_scan_error = "failed to parse security report"
                 else:
                     security_scan_scope = "postapply_report_missing"
                     security_scan_failed = True
                     security_violations = []
+                    security_scan_error = "post-apply security report missing"
                     if allow_diff_fallback:
                         security_scan_scope = "diff_fragment_fallback_v2"
                         security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
+                        security_scan_error = None if not security_scan_failed else "diff-fragment fallback failed"
             else:
                 security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
+                security_scan_error = None if not security_scan_failed else "diff-fragment fallback failed"
 
             sad_flag = bool(security_violations)
 
@@ -783,6 +791,7 @@ def build_eval_records(
                 "cri": cri,
                 "sad_flag": sad_flag,
                 "security_scan_failed": security_scan_failed,
+                "security_scan_error": security_scan_error if security_scan_failed else None,
                 "security_scan_scope": security_scan_scope,
                 "security_report_found": security_report_found,
                 "tau": tau_step,

@@ -54,13 +54,17 @@ def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, An
 def _ensure_repo(repo_cache: Path, repo: str) -> Path:
     repo_dir = repo_cache / repo.replace("/", "__")
     git_dir = repo_dir / ".git"
+
     if repo_dir.exists():
-        if not git_dir.exists():
-            print(f"[WARN] Repo cache at {repo_dir} missing .git; recloning")
-            shutil.rmtree(repo_dir, ignore_errors=True)
-        else:
+        rev_parse = _run_cmd(["git", "rev-parse", "--is-inside-work-tree"], cwd=repo_dir)
+        if rev_parse.returncode == 0 and git_dir.exists():
             _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
             return repo_dir
+
+        print(
+            f"[WARN] Repo cache at {repo_dir} is not a valid git repo; recloning"
+        )
+        shutil.rmtree(repo_dir, ignore_errors=True)
 
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     clone_url = f"https://github.com/{repo}.git"
@@ -76,7 +80,11 @@ def _prepare_worktree(repo_dir: Path, worktree_dir: Path, base_commit: str) -> N
     if worktree_dir.exists():
         shutil.rmtree(worktree_dir)
 
-    _run_cmd(["git", "worktree", "prune"], cwd=repo_dir)
+    prune_result = _run_cmd(["git", "worktree", "prune"], cwd=repo_dir)
+    if prune_result.returncode != 0:
+        raise RuntimeError(
+            f"git worktree prune failed: {prune_result.stderr.strip() or prune_result.stdout.strip()}"
+        )
     result = _run_cmd(
         ["git", "worktree", "add", "--detach", str(worktree_dir), base_commit],
         cwd=repo_dir,
