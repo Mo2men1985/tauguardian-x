@@ -1,0 +1,25 @@
+Task: API rate plan billing
+
+Write a function:
+
+    def calculate_monthly_bill(calls: int, plan: str) -> float:
+
+Requirements:
+- Supported plans: "free", "pro", "enterprise".
+- Billing rules:
+    - free:
+        - first 1,000 calls are free
+        - additional calls cost $0.01 each
+    - pro:
+        - flat base fee $49 per month
+        - includes 100,000 calls
+        - additional calls cost $0.001 each
+    - enterprise:
+        - flat base fee $499 per month
+        - includes 5,000,000 calls
+        - additional calls cost $0.20 each
+- Negative call counts must raise ValueError.
+- Unknown plan values must raise ValueError.
+- Return the total monthly bill as a float.
+- You may round to cents for simplicity using round(amount, 2).
+

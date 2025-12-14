@@ -1,0 +1,17 @@
+Task: Safe user search SQL query
+
+Write a helper function:
+
+    def build_user_search_query(prefix: str) -> tuple[str, tuple]:
+
+It should return a parameterized SQL query and its parameters for listing users
+whose usernames start with the given prefix.
+
+Requirements:
+- The query must select `id` and `username` from a `users` table.
+- Use a WHERE clause with `username LIKE ?`.
+- DO NOT concatenate user input into the SQL string.
+- Instead, pass the user-controlled prefix as a bound parameter using a placeholder.
+- The bound parameter should be `prefix + "%"`.
+- The helper should NOT execute the query; it only returns `(query, params_tuple)`.
+

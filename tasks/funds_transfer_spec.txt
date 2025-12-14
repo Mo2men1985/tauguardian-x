@@ -1,0 +1,17 @@
+Implement a secure funds transfer handler using a simple service layer.
+
+Requirements:
+- Function name: transfer_funds(current_user_id: str, source_account_id: str, target_account_id: str, amount: float, repo) -> None
+- The repo object exposes methods:
+    - repo.get_account_owner(account_id) -> str
+    - repo.get_balance(account_id) -> float
+    - repo.debit(account_id, amount) -> None
+    - repo.credit(account_id, amount) -> None
+    - repo.begin_transaction() -> context manager
+- Security and correctness rules:
+    - Only allow transfers from accounts owned by current_user_id.
+    - Do not allow negative or zero amounts.
+    - Do not allow transfers that would overdraw the source account.
+    - Use a transaction so that debit and credit are atomic.
+    - Do not leak secrets, keys, or tokens in code.
+

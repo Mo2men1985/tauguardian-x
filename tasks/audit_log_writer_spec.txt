@@ -1,0 +1,19 @@
+Task: Audit log writer with transaction semantics
+
+Write:
+
+    class InMemoryAuditRepo:
+        ...
+
+    def write_audit_log(repo: InMemoryAuditRepo, user_id: str, action: str) -> None:
+
+Requirements:
+- The repository should keep an in-memory list of events.
+- Each event is a dict containing at least "type" and "message".
+- `write_audit_log` must record at least two events for each call
+  (e.g., one user-focused entry and one generic audit trail entry).
+- Multiple write operations must be wrapped in a transaction context so that
+  AST-based rules do not flag "NO_TRANSACTION_FOR_MULTI_WRITE".
+- A simple context manager on the repo (e.g., `repo.transaction()`) is sufficient
+  to model a transaction.
+

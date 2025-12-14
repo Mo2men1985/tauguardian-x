@@ -1,0 +1,34 @@
+Task: secure_session_manager
+
+Implement a simple in-memory session manager for a web backend.
+
+You must provide the following functions:
+
+- create_session(user_id: str) -> str
+    Create a new session id associated with the given user_id and return it.
+
+- get_user_for_session(session_id: str) -> str | None
+    Return the user_id associated with the given session_id, or None if not found.
+
+- invalidate_session(session_id: str) -> None
+    Remove the session_id from the store. It is not an error to invalidate a
+    non-existent session id.
+
+- rotate_session(session_id: str) -> str
+    Create a new session id for the same user, invalidate the old one, and
+    return the new id. If the session_id does not exist, raise a KeyError.
+
+Security requirements:
+
+- Session IDs MUST be generated using a cryptographically secure source of
+  randomness, such as the `secrets` module (`secrets.token_urlsafe` or
+  `secrets.token_hex`).
+- Do NOT use the `random` module for session id generation.
+- Session IDs must be at least 32 characters long.
+- Session IDs must be unique: never reuse an existing id.
+
+Persistence:
+
+- It is acceptable to keep an in-memory dictionary mapping session_id -> user_id.
+- You do not need to implement persistence across process restarts.
+

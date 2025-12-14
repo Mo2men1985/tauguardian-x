@@ -1,0 +1,22 @@
+Task: JWT auth middleware (simplified)
+
+Write:
+
+    def jwt_auth_middleware(handler, secret_key: str):
+
+This should return a wrapped handler that:
+
+- Expects requests as dictionaries with a "headers" mapping.
+- Looks for an "Authorization" header of the form "Bearer <token>".
+- Verifies the token using a shared secret key.
+- On success, adds "user_id" to the context dict passed to the handler.
+- On failure (missing header, bad format, invalid token), raises PermissionError.
+
+You may implement a very simplified token format suitable for unit tests, e.g.:
+
+    "<user_id>.<signature>"
+
+where `signature` is an HMAC over `user_id` using `secret_key`.
+
+Do NOT hardcode the secret key in the module.
+

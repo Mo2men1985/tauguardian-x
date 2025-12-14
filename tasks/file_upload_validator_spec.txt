@@ -1,0 +1,19 @@
+Task: File upload validator
+
+Write a function:
+
+    def validate_upload(filename: str, content_type: str, size_bytes: int) -> bool:
+
+Requirements:
+- Allow only files with extensions: .png, .jpg, .jpeg, .pdf
+- Enforce a maximum size of 5 MB (5 * 1024 * 1024 bytes).
+- Reject empty or zero-size files.
+- Ensure the content_type roughly matches the extension:
+    - .png  -> "image/png"
+    - .jpg  -> "image/jpeg"
+    - .jpeg -> "image/jpeg"
+    - .pdf  -> "application/pdf"
+- Perform case-insensitive checks for file extensions.
+- Return True only if ALL checks pass, otherwise False.
+- Do NOT attempt to inspect the file contents; this is a metadata-only check.
+

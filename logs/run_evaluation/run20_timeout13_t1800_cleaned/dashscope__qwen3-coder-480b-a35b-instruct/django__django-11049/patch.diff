@@ -1,0 +1,1 @@
+Command '['docker', 'run', '-d', '--name', 'minisweagent-499069ba', '-w', '/testbed', '--rm', 'docker.io/swebench/sweb.eval.x86_64.django_1776_django-11049:latest', 'sleep', '2h']' timed out after 120 seconds

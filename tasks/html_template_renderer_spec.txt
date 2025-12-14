@@ -1,0 +1,18 @@
+Task: Safe HTML template renderer
+
+Write a function:
+
+    def render_user_profile(username: str, bio: str) -> str:
+
+Requirements:
+- Return a small HTML snippet representing a user profile, for example:
+
+    <div class="profile">
+      <h1>...</h1>
+      <p>...</p>
+    </div>
+
+- Escape both the username and bio to prevent HTML injection.
+- Use a proper escaping helper (e.g., html.escape).
+- The function should not reference browser APIs like innerHTML; this is server-side HTML construction.
+

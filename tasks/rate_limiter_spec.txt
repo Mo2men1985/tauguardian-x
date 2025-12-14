@@ -1,0 +1,8 @@
+Implement a simple in-memory rate limiter.
+
+Requirements:
+- Function name: allow_request(user_id: str, ts: int) -> bool
+- `ts` is an integer timestamp in seconds.
+- Allow at most 3 requests per user within any rolling 10-second window.
+- Return True if the request is allowed, False otherwise.
+

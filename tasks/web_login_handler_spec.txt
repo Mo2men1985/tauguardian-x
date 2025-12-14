@@ -1,0 +1,26 @@
+Task: Login handler with basic security checks
+
+Write a function:
+
+    def login_handler(user_repo, username: str, password: str) -> dict:
+
+The user_repo supports:
+
+    user_repo.get_user(username) -> dict | None
+
+Each user dict has:
+    {
+        "username": str,
+        "password_hash": str,  # hash of the password
+        "is_active": bool
+    }
+
+Requirements:
+- If the user does not exist or the password is wrong: return
+    {"ok": False, "error": "invalid_credentials"}.
+- If the user is inactive: return {"ok": False, "error": "inactive_user"}.
+- On success: return {"ok": True, "user_id": <username>}.
+- Compare password hashes in a timing-safe way (e.g., hmac.compare_digest).
+- Do NOT log or return the raw password.
+- Do NOT hardcode any secrets or passwords in module-level variables.
+
