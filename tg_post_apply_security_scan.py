@@ -53,8 +53,14 @@ def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, An
 
 def _ensure_repo(repo_cache: Path, repo: str) -> Path:
     repo_dir = repo_cache / repo.replace("/", "__")
+    git_dir = repo_dir / ".git"
     if repo_dir.exists():
-        return repo_dir
+        if not git_dir.exists():
+            print(f"[WARN] Repo cache at {repo_dir} missing .git; recloning")
+            shutil.rmtree(repo_dir, ignore_errors=True)
+        else:
+            _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
+            return repo_dir
 
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     clone_url = f"https://github.com/{repo}.git"
@@ -62,6 +68,7 @@ def _ensure_repo(repo_cache: Path, repo: str) -> Path:
     result = _run_cmd(["git", "clone", clone_url, str(repo_dir)])
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr.strip() or result.stdout.strip()}")
+    _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
     return repo_dir
 
 
@@ -70,7 +77,10 @@ def _prepare_worktree(repo_dir: Path, worktree_dir: Path, base_commit: str) -> N
         shutil.rmtree(worktree_dir)
 
     _run_cmd(["git", "worktree", "prune"], cwd=repo_dir)
-    result = _run_cmd(["git", "worktree", "add", "--detach", str(worktree_dir), base_commit])
+    result = _run_cmd(
+        ["git", "worktree", "add", "--detach", str(worktree_dir), base_commit],
+        cwd=repo_dir,
+    )
     if result.returncode != 0:
         raise RuntimeError(
             f"git worktree add failed for {base_commit}: {result.stderr.strip() or result.stdout.strip()}"
@@ -299,7 +309,10 @@ def main() -> None:
         _write_report(report_path, report)
 
         status_str = "SKIPPED" if report.get("skipped") else ("FAILED" if report.get("scan_failed") else "OK")
-        print(f"[{status_str}] {instance_id}: new_violations={len(report.get('new_violations', []))}")
+        msg = f"[{status_str}] {instance_id}: new_violations={len(report.get('new_violations', []))}"
+        if report.get("scan_failed") and report.get("scan_error"):
+            msg += f" scan_error={report.get('scan_error')}"
+        print(msg)
 
 
 if __name__ == "__main__":
