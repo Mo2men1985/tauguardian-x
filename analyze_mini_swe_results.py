@@ -611,6 +611,7 @@ def build_eval_records(
     dataset: str = "princeton-nlp/SWE-bench_Lite",
     timeout: int = 300,
     security_reports_dir: Optional[Path] = None,
+    allow_diff_fallback: bool = False,
 ) -> Tuple[int, int]:
     """Generate the τGuardian eval JSONL for a mini-SWE run."""
 
@@ -639,6 +640,40 @@ def build_eval_records(
             eval_result = eval_results.get(instance_id)
 
             instance_eval = instance_results.get(instance_id)
+
+            infra_failure_class = classify_infra_failure_from_patch(patch)
+            if infra_failure_class:
+                tau_step = int(rec.get("tau_step", 1))
+                row: Dict[str, Any] = {
+                    "model": model_id,
+                    "provider": rec.get("provider", "unknown"),
+                    "task": instance_id,
+                    "type": "external_swe_agent",
+                    "source": "mini-swe-agent",
+                    "status": status,
+                    "resolved": False,
+                    "resolved_status": infra_failure_class,
+                    "eval_status": "infra_error",
+                    "tests_passed": 0,
+                    "tests_failed": 0,
+                    "total_tests": 0,
+                    "test_pass_rate": 0.0,
+                    "cri": 0.0,
+                    "sad_flag": False,
+                    "security_scan_failed": False,
+                    "security_scan_scope": "skipped_infra_timeout_before_patch",
+                    "security_report_found": False,
+                    "tau": tau_step,
+                    "final_decision": "ABSTAIN",
+                    "iterations": tau_step,
+                    "patch": patch,
+                    "security_violations": [],
+                    "infra_timeout_before_patch": True,
+                }
+
+                out_f.write(json.dumps(row) + "\n")
+                total += 1
+                continue
 
             if _is_infra_timeout_before_patch(patch) and instance_eval is None:
                 tau_step = int(rec.get("tau_step", 1))
@@ -701,7 +736,12 @@ def build_eval_records(
                         security_scan_failed = True
                         security_violations = []
                 else:
-                    security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
+                    security_scan_scope = "postapply_report_missing"
+                    security_scan_failed = True
+                    security_violations = []
+                    if allow_diff_fallback:
+                        security_scan_scope = "diff_fragment_fallback_v2"
+                        security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
             else:
                 security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
 
@@ -790,6 +830,11 @@ def main() -> None:
         default=None,
         help="Directory of per-instance JSON reports from tg_post_apply_security_scan.py (optional). If provided, these reports are the authoritative SAD inputs.",
     )
+    parser.add_argument(
+        "--allow-diff-fallback",
+        action="store_true",
+        help="Allow diff-fragment fallback when security report is missing (off by default)",
+    )
 
     args = parser.parse_args()
 
@@ -807,6 +852,7 @@ def main() -> None:
         dataset=args.dataset,
         timeout=args.timeout,
         security_reports_dir=security_reports_dir,
+        allow_diff_fallback=args.allow_diff_fallback,
     )
 
     if total == 0:
