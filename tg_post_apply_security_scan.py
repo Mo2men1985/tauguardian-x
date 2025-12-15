@@ -65,15 +65,19 @@ def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, An
 
 def _ensure_repo(repo_cache: Path, repo: str, force_reclone: bool = False) -> Path:
     repo_dir = repo_cache / repo.replace("/", "__")
+    git_dir = repo_dir / ".git"
 
     if repo_dir.exists():
         valid, err = _is_valid_git_repo(repo_dir)
-        if valid and not force_reclone:
+        git_dir_exists = git_dir.exists()
+
+        if valid and git_dir_exists and not force_reclone:
             _run_cmd(["git", "-C", str(repo_dir), "config", "core.longpaths", "true"], cwd=repo_dir)
             return repo_dir
 
         if not force_reclone:
-            print(f"[WARN] Repo cache at {repo_dir} is not a valid git repo; recloning ({err})")
+            missing_git = "; missing .git" if not git_dir_exists else ""
+            print(f"[WARN] Repo cache at {repo_dir} is not a valid git repo{missing_git}; recloning ({err})")
 
         shutil.rmtree(repo_dir, ignore_errors=True)
 
