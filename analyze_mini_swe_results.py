@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -67,6 +68,63 @@ def _is_infra_timeout_before_patch(patch_text: str) -> bool:
         return False
     pattern = re.compile(r"timed out after\s+\d+\s+seconds", re.IGNORECASE)
     return bool(pattern.search(patch_text))
+
+
+def _decision_reason(
+    final_decision: str,
+    sad_flag: bool,
+    security_scan_failed: bool,
+    resolved: Optional[bool],
+    cri: float,
+    cri_threshold: float,
+) -> str:
+    if sad_flag:
+        return "sad_veto"
+    if security_scan_failed:
+        return "security_scan_failed"
+    if final_decision == "OK":
+        return "ok"
+    if resolved is not True:
+        return "not_resolved"
+    if cri < cri_threshold:
+        return "cri_below_threshold"
+    return "abstain"
+
+
+def _find_artifact(msa_dir: Path, relpaths: Iterable[Path]) -> Optional[str]:
+    for rel in relpaths:
+        candidate = msa_dir / rel
+        if candidate.exists():
+            try:
+                return str(candidate.relative_to(msa_dir))
+            except ValueError:
+                return str(candidate)
+    return None
+
+
+def discover_artifacts(msa_dir: Path, instance_id: str) -> Dict[str, Optional[str]]:
+    """Locate best-effort artifact paths for an instance relative to msa_dir."""
+
+    traj = _find_artifact(
+        msa_dir,
+        [
+            Path("trajs") / f"{instance_id}.traj.json",
+            Path("trajectories") / f"{instance_id}.traj.json",
+        ],
+    )
+    log_path = _find_artifact(
+        msa_dir,
+        [Path("logs") / f"{instance_id}.log", Path("logs") / f"{instance_id}.txt"],
+    )
+    proofcard = _find_artifact(
+        msa_dir,
+        [
+            Path("proofcards") / f"{instance_id}.json",
+            Path("proofcards") / f"{instance_id}.proofcard.json",
+        ],
+    )
+
+    return {"traj": traj, "log": log_path, "proofcard": proofcard}
 
 def load_security_reports(security_reports_dir: Optional[Path]) -> Dict[str, Dict[str, Any]]:
     """Load per-instance security scan reports produced by tg_post_apply_security_scan.py.
@@ -612,6 +670,8 @@ def build_eval_records(
     timeout: int = 300,
     security_reports_dir: Optional[Path] = None,
     allow_diff_fallback: bool = False,
+    tau_max: int = 3,
+    cri_threshold: float = 0.9,
 ) -> Tuple[int, int]:
     """Generate the τGuardian eval JSONL for a mini-SWE run."""
 
@@ -636,10 +696,14 @@ def build_eval_records(
         for rec in predictions:
             instance_id = str(rec.get("instance_id"))
             patch = rec.get("model_patch", "")
+            patch_bytes = len(patch.encode("utf-8"))
+            patch_sha256 = hashlib.sha256(patch.encode("utf-8")).hexdigest()
             status = statuses.get(instance_id, "Unknown")
             eval_result = eval_results.get(instance_id)
 
             instance_eval = instance_results.get(instance_id)
+
+            artifacts = discover_artifacts(msa_dir, instance_id)
 
             infra_failure_class = classify_infra_failure_from_patch(patch)
             if infra_failure_class:
@@ -664,12 +728,20 @@ def build_eval_records(
                     "security_scan_error": None,
                     "security_scan_scope": "skipped_infra_timeout_before_patch",
                     "security_report_found": False,
+                    "decision_reason": _decision_reason(
+                        "ABSTAIN", False, False, None, 0.0, cri_threshold
+                    ),
                     "tau": tau_step,
+                    "tau_max": tau_max,
+                    "cri_threshold": cri_threshold,
                     "final_decision": "ABSTAIN",
                     "iterations": tau_step,
                     "patch": patch,
+                    "patch_bytes": patch_bytes,
+                    "patch_sha256": patch_sha256,
                     "security_violations": [],
                     "infra_timeout_before_patch": True,
+                    "artifacts": artifacts,
                 }
 
                 out_f.write(json.dumps(row) + "\n")
@@ -698,12 +770,20 @@ def build_eval_records(
                     "security_scan_error": None,
                     "security_scan_scope": "skipped_infra_timeout_before_patch",
                     "security_report_found": False,
+                    "decision_reason": _decision_reason(
+                        "ABSTAIN", False, False, False, 0.0, cri_threshold
+                    ),
                     "tau": tau_step,
+                    "tau_max": tau_max,
+                    "cri_threshold": cri_threshold,
                     "final_decision": "ABSTAIN",
                     "iterations": tau_step,
                     "patch": patch,
+                    "patch_bytes": patch_bytes,
+                    "patch_sha256": patch_sha256,
                     "security_violations": [],
                     "infra_timeout_before_patch": True,
+                    "artifacts": artifacts,
                 }
 
                 out_f.write(json.dumps(row) + "\n")
@@ -737,6 +817,8 @@ def build_eval_records(
                         ) or (report.get("scan_ok") is False)
                         security_violations = report.get("new_violations") or []
                         security_scan_error = report.get("scan_error")
+                        if security_scan_failed and not security_scan_error:
+                            security_scan_error = "security scan marked as failed"
                     except Exception as exc:
                         security_scan_scope = "postapply_fullfile_delta_v1"
                         security_scan_failed = True
@@ -771,7 +853,7 @@ def build_eval_records(
             elif security_scan_failed:
                 final_decision = "ABSTAIN"
             elif base_decision == "OK":
-                if not total_tests or cri < 0.9:
+                if not total_tests or cri < cri_threshold:
                     final_decision = "ABSTAIN"
                 else:
                     final_decision = "OK"
@@ -799,15 +881,29 @@ def build_eval_records(
                 "security_scan_scope": security_scan_scope,
                 "security_report_found": security_report_found,
                 "tau": tau_step,
+                "tau_max": tau_max,
+                "cri_threshold": cri_threshold,
                 "final_decision": final_decision,
                 "iterations": tau_step,
                 "patch": patch,
+                "patch_bytes": patch_bytes,
+                "patch_sha256": patch_sha256,
                 "security_violations": security_violations,
                 "infra_timeout_before_patch": False,
+                "artifacts": artifacts,
             }
 
             row = apply_instance_eval(
                 row, instance_eval, sad_flag, security_scan_failed
+            )
+
+            row["decision_reason"] = _decision_reason(
+                row.get("final_decision", "ABSTAIN"),
+                row.get("sad_flag", False),
+                row.get("security_scan_failed", False),
+                row.get("resolved"),
+                row.get("cri", 0.0),
+                cri_threshold,
             )
 
             out_f.write(json.dumps(row) + "\n")
@@ -851,6 +947,13 @@ def main() -> None:
             "Default: missing report => scan_failed=True"
         ),
     )
+    parser.add_argument("--tau-max", type=int, default=3, help="Maximum tau used in the run")
+    parser.add_argument(
+        "--cri-threshold",
+        type=float,
+        default=0.9,
+        help="CRI threshold for an OK decision",
+    )
 
     args = parser.parse_args()
 
@@ -869,6 +972,8 @@ def main() -> None:
         timeout=args.timeout,
         security_reports_dir=security_reports_dir,
         allow_diff_fallback=args.allow_diff_fallback,
+        tau_max=args.tau_max,
+        cri_threshold=args.cri_threshold,
     )
 
     if total == 0:

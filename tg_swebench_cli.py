@@ -12,7 +12,6 @@ import json
 import re
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
@@ -78,11 +77,56 @@ def normalize_patch_text(text: str) -> str:
         # No diff markers found; return as-is (still newline-normalized).
         normalized = candidate
 
-    # Dedent common indentation (safe for fenced/indented blocks).
-    normalized = textwrap.dedent(normalized).strip("\n")
+    # Dedent common indentation (safe for fenced/indented blocks) while preserving
+    # whitespace-only diff context lines.
+    normalized = _safe_dedent_preserve_diff(normalized).strip("\n")
     if not normalized.endswith("\n"):
         normalized += "\n"
     return normalized
+
+
+def _safe_dedent_preserve_diff(text: str) -> str:
+    """Remove common indentation without stripping diff prefixes.
+
+    ``textwrap.dedent`` treats whitespace-only lines as indented content and will
+    collapse a single-space diff context line (" ") into an empty string. That
+    breaks unified-diff hunks (``git apply`` reports "corrupt patch").
+
+    This helper computes the common indentation from non-blank lines only and
+    never strips a whitespace-only line down to ``""``.
+    """
+
+    lines = text.splitlines()
+    if not lines:
+        return text
+
+    indent_candidates = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped:
+            indent_candidates.append(len(line) - len(stripped))
+
+    if not indent_candidates:
+        return text
+
+    margin = min(indent_candidates)
+    if margin <= 0:
+        return text
+
+    dedented: List[str] = []
+    for line in lines:
+        if not line:
+            dedented.append(line)
+            continue
+        if len(line) <= margin:
+            trimmed = ""
+        else:
+            trimmed = line[margin:]
+        if trimmed == "" and line.strip() == "":
+            dedented.append(" ")
+        else:
+            dedented.append(trimmed)
+    return "\n".join(dedented)
 
 
 def _ensure_instance_id(record: Dict[str, Any], fallback: str) -> Dict[str, Any]:

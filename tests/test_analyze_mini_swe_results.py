@@ -93,6 +93,9 @@ def test_instance_results_join_and_decisions(tmp_path: Path) -> None:
     row1, row2, row3 = rows
     assert row1["resolved"] is True
     assert row1["final_decision"] == "OK"
+    assert row1["decision_reason"] == "ok"
+    assert row1["patch_sha256"]
+    assert row1["patch_bytes"] > 0
     assert row2["final_decision"] == "ABSTAIN"
     assert row3["resolved_status"] == "PATCH_APPLY_FAILED"
 
@@ -141,6 +144,7 @@ def test_resolved_instance_with_scan_failed_abstains(tmp_path: Path) -> None:
     assert row["sad_flag"] is False
     assert row["security_scan_failed"] is True
     assert row["final_decision"] == "ABSTAIN"
+    assert row["decision_reason"] == "security_scan_failed"
 
 
 def test_infra_timeout_before_patch_bucket(tmp_path: Path) -> None:
@@ -215,6 +219,7 @@ def test_security_report_overrides_fallback_to_ok(tmp_path: Path) -> None:
     assert row["security_report_found"] is True
     assert row["security_scan_scope"] == "postapply_fullfile_delta_v1"
     assert row["final_decision"] == "OK"
+    assert row["decision_reason"] == "ok"
 
 
 def test_security_report_scan_failure_abstains(tmp_path: Path) -> None:
@@ -257,6 +262,7 @@ def test_security_report_scan_failure_abstains(tmp_path: Path) -> None:
     row = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
     assert row["security_scan_failed"] is True
     assert row["final_decision"] == "ABSTAIN"
+    assert row["decision_reason"] == "security_scan_failed"
 
 
 def test_security_report_with_new_violation_vetoes(tmp_path: Path) -> None:
@@ -310,6 +316,7 @@ def test_security_report_with_new_violation_vetoes(tmp_path: Path) -> None:
     assert row["sad_flag"] is True
     assert row["security_violations"] == ["NO_TRANSACTION_FOR_MULTI_WRITE"]
     assert row["final_decision"] == "VETO"
+    assert row["decision_reason"] == "sad_veto"
 
 
 def test_missing_report_defaults_to_scan_failed(tmp_path: Path) -> None:
@@ -352,6 +359,8 @@ def test_missing_report_defaults_to_scan_failed(tmp_path: Path) -> None:
     assert row["security_scan_failed"] is True
     assert row["sad_flag"] is False
     assert row["final_decision"] == "ABSTAIN"
+    assert row["decision_reason"] == "security_scan_failed"
+    assert row["security_scan_error"]
 
 
 def test_allow_diff_fallback_when_report_missing(tmp_path: Path) -> None:
@@ -395,6 +404,7 @@ def test_allow_diff_fallback_when_report_missing(tmp_path: Path) -> None:
     assert row["security_scan_failed"] is False
     assert row["sad_flag"] is True
     assert row["final_decision"] == "VETO"
+    assert row["decision_reason"] == "sad_veto"
 
 
 def test_infra_timeout_classification_skips_eval(tmp_path: Path) -> None:
