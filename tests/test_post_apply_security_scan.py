@@ -20,7 +20,11 @@ def test_prepare_worktree_runs_in_repo_dir(tmp_path: Path, monkeypatch) -> None:
     scan._prepare_worktree(repo_dir, worktree_dir, "abc123")
 
     assert calls
-    assert calls[0][0] == ["git", "worktree", "prune"]
+    assert calls[0][0] == ["git", "-C", str(repo_dir), "rev-parse", "--git-dir"]
     assert calls[0][1] == repo_dir
-    assert calls[1][0] == ["git", "worktree", "add", "--detach", str(worktree_dir), "abc123"]
+    assert calls[1][0] == ["git", "-C", str(repo_dir), "cat-file", "-e", "abc123^{commit}"]
     assert calls[1][1] == repo_dir
+    assert calls[2][0] == ["git", "-C", str(repo_dir), "worktree", "prune"]
+    assert calls[2][1] == repo_dir
+    assert calls[3][0] == ["git", "-C", str(repo_dir), "worktree", "add", "--detach", str(worktree_dir), "abc123"]
+    assert calls[3][1] == repo_dir
