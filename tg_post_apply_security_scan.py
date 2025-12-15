@@ -35,6 +35,18 @@ def _run_cmd(cmd: List[str], cwd: Optional[Path] = None, input_text: Optional[st
     )
 
 
+def _is_valid_git_repo(repo_dir: Path) -> Tuple[bool, str]:
+    try:
+        res = _run_cmd(["git", "-C", str(repo_dir), "rev-parse", "--git-dir"], cwd=repo_dir)
+    except FileNotFoundError as exc:  # pragma: no cover - depends on environment
+        return False, f"git executable not found: {exc}"
+
+    if res.returncode != 0:
+        err = (res.stderr or res.stdout or "").strip()
+        return False, err or "git rev-parse failed"
+    return True, ""
+
+
 def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, Any]]:
     from datasets import load_dataset
 
@@ -51,16 +63,19 @@ def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, An
     return index
 
 
-def _ensure_repo(repo_cache: Path, repo: str) -> Path:
+def _ensure_repo(repo_cache: Path, repo: str, force_reclone: bool = False) -> Path:
     repo_dir = repo_cache / repo.replace("/", "__")
-    git_dir = repo_dir / ".git"
+
     if repo_dir.exists():
-        if not git_dir.exists():
-            print(f"[WARN] Repo cache at {repo_dir} missing .git; recloning")
-            shutil.rmtree(repo_dir, ignore_errors=True)
-        else:
-            _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
+        valid, err = _is_valid_git_repo(repo_dir)
+        if valid and not force_reclone:
+            _run_cmd(["git", "-C", str(repo_dir), "config", "core.longpaths", "true"], cwd=repo_dir)
             return repo_dir
+
+        if not force_reclone:
+            print(f"[WARN] Repo cache at {repo_dir} is not a valid git repo; recloning ({err})")
+
+        shutil.rmtree(repo_dir, ignore_errors=True)
 
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     clone_url = f"https://github.com/{repo}.git"
@@ -68,17 +83,39 @@ def _ensure_repo(repo_cache: Path, repo: str) -> Path:
     result = _run_cmd(["git", "clone", clone_url, str(repo_dir)])
     if result.returncode != 0:
         raise RuntimeError(f"git clone failed: {result.stderr.strip() or result.stdout.strip()}")
-    _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
+    _run_cmd(["git", "-C", str(repo_dir), "config", "core.longpaths", "true"], cwd=repo_dir)
+
+    valid, err = _is_valid_git_repo(repo_dir)
+    if not valid:
+        raise RuntimeError(f"cloned repo invalid: {err}")
+
     return repo_dir
 
 
 def _prepare_worktree(repo_dir: Path, worktree_dir: Path, base_commit: str) -> None:
+    valid, err = _is_valid_git_repo(repo_dir)
+    if not valid:
+        raise RuntimeError(f"invalid repo: {err}")
+
+    commit_check = _run_cmd(
+        ["git", "-C", str(repo_dir), "cat-file", "-e", f"{base_commit}^{{commit}}"],
+        cwd=repo_dir,
+    )
+    if commit_check.returncode != 0:
+        raise RuntimeError(
+            f"base_commit not found: {commit_check.stderr.strip() or commit_check.stdout.strip()}"
+        )
+
     if worktree_dir.exists():
         shutil.rmtree(worktree_dir)
 
-    _run_cmd(["git", "worktree", "prune"], cwd=repo_dir)
+    prune_result = _run_cmd(["git", "-C", str(repo_dir), "worktree", "prune"], cwd=repo_dir)
+    if prune_result.returncode != 0:
+        raise RuntimeError(
+            f"git worktree prune failed: {prune_result.stderr.strip() or prune_result.stdout.strip()}"
+        )
     result = _run_cmd(
-        ["git", "worktree", "add", "--detach", str(worktree_dir), base_commit],
+        ["git", "-C", str(repo_dir), "worktree", "add", "--detach", str(worktree_dir), base_commit],
         cwd=repo_dir,
     )
     if result.returncode != 0:
@@ -161,6 +198,7 @@ def _scan_instance(
     dataset_meta: Dict[str, str],
     repo_cache: Path,
     worktree_root: Path,
+    force_reclone: bool,
 ) -> Dict[str, Any]:
     instance_id = str(instance.get("instance_id"))
     patch = normalize_patch_text(instance.get("model_patch", ""))
@@ -195,7 +233,7 @@ def _scan_instance(
     worktree_dir = worktree_root / instance_id.replace("/", "__")
 
     try:
-        repo_dir = _ensure_repo(repo_cache, repo)
+        repo_dir = _ensure_repo(repo_cache, repo, force_reclone=force_reclone)
         _prepare_worktree(repo_dir, worktree_dir, str(base_commit))
     except Exception as exc:
         report["scan_failed"] = True
@@ -261,6 +299,11 @@ def main() -> None:
         help="Directory to cache cloned repositories",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite existing reports")
+    parser.add_argument(
+        "--force-reclone",
+        action="store_true",
+        help="Delete and re-clone cached repos before scanning",
+    )
 
     args = parser.parse_args()
 
@@ -293,7 +336,14 @@ def main() -> None:
         if dataset_meta is None:
             print(f"[WARN] {instance_id}: not found in dataset; marking scan_failed")
             dummy_meta = {"repo": None, "base_commit": None}
-            report = _scan_instance(rec, statuses.get(instance_id, ""), dummy_meta, repo_cache, worktree_root)
+            report = _scan_instance(
+                rec,
+                statuses.get(instance_id, ""),
+                dummy_meta,
+                repo_cache,
+                worktree_root,
+                args.force_reclone,
+            )
             report["scan_failed"] = True
             report["scan_error"] = "instance not found in dataset"
             _write_report(report_path, report)
@@ -305,6 +355,7 @@ def main() -> None:
             dataset_meta,
             repo_cache,
             worktree_root,
+            args.force_reclone,
         )
         _write_report(report_path, report)
 
