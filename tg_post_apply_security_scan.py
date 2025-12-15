@@ -51,20 +51,19 @@ def _load_dataset_index(dataset_name: str, split: str) -> Dict[str, Dict[str, An
     return index
 
 
-def _ensure_repo(repo_cache: Path, repo: str) -> Path:
+def _ensure_repo(repo_cache: Path, repo: str, *, force_reclone: bool = False) -> Path:
     repo_dir = repo_cache / repo.replace("/", "__")
-    git_dir = repo_dir / ".git"
 
     if repo_dir.exists():
-        rev_parse = _run_cmd(["git", "rev-parse", "--is-inside-work-tree"], cwd=repo_dir)
-        if rev_parse.returncode == 0 and git_dir.exists():
-            _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
-            return repo_dir
-
-        print(
-            f"[WARN] Repo cache at {repo_dir} is not a valid git repo; recloning"
-        )
-        shutil.rmtree(repo_dir, ignore_errors=True)
+        if force_reclone:
+            shutil.rmtree(repo_dir, ignore_errors=True)
+        else:
+            probe = _run_cmd(["git", "rev-parse", "--is-inside-work-tree"], cwd=repo_dir)
+            if probe.returncode == 0 and probe.stdout.strip().lower() == "true":
+                _run_cmd(["git", "config", "core.longpaths", "true"], cwd=repo_dir)
+                return repo_dir
+            print(f"[WARN] Invalid git repo at {repo_dir}; removing and recloning")
+            shutil.rmtree(repo_dir, ignore_errors=True)
 
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     clone_url = f"https://github.com/{repo}.git"
@@ -169,6 +168,8 @@ def _scan_instance(
     dataset_meta: Dict[str, str],
     repo_cache: Path,
     worktree_root: Path,
+    *,
+    force_reclone: bool = False,
 ) -> Dict[str, Any]:
     instance_id = str(instance.get("instance_id"))
     patch = normalize_patch_text(instance.get("model_patch", ""))
@@ -203,7 +204,7 @@ def _scan_instance(
     worktree_dir = worktree_root / instance_id.replace("/", "__")
 
     try:
-        repo_dir = _ensure_repo(repo_cache, repo)
+        repo_dir = _ensure_repo(repo_cache, repo, force_reclone=force_reclone)
         _prepare_worktree(repo_dir, worktree_dir, str(base_commit))
     except Exception as exc:
         report["scan_failed"] = True
@@ -269,6 +270,11 @@ def main() -> None:
         help="Directory to cache cloned repositories",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite existing reports")
+    parser.add_argument(
+        "--force-reclone",
+        action="store_true",
+        help="Delete and reclone cached repos before scanning",
+    )
 
     args = parser.parse_args()
 
@@ -301,7 +307,14 @@ def main() -> None:
         if dataset_meta is None:
             print(f"[WARN] {instance_id}: not found in dataset; marking scan_failed")
             dummy_meta = {"repo": None, "base_commit": None}
-            report = _scan_instance(rec, statuses.get(instance_id, ""), dummy_meta, repo_cache, worktree_root)
+            report = _scan_instance(
+                rec,
+                statuses.get(instance_id, ""),
+                dummy_meta,
+                repo_cache,
+                worktree_root,
+                force_reclone=args.force_reclone,
+            )
             report["scan_failed"] = True
             report["scan_error"] = "instance not found in dataset"
             _write_report(report_path, report)
@@ -313,14 +326,16 @@ def main() -> None:
             dataset_meta,
             repo_cache,
             worktree_root,
+            force_reclone=args.force_reclone,
         )
         _write_report(report_path, report)
 
         status_str = "SKIPPED" if report.get("skipped") else ("FAILED" if report.get("scan_failed") else "OK")
-        msg = f"[{status_str}] {instance_id}: new_violations={len(report.get('new_violations', []))}"
-        if report.get("scan_failed") and report.get("scan_error"):
-            msg += f" scan_error={report.get('scan_error')}"
-        print(msg)
+        err = report.get("scan_error")
+        suffix = f" | error: {str(err)[:160]}" if report.get("scan_failed") and err else ""
+        print(
+            f"[{status_str}] {instance_id}: new_violations={len(report.get('new_violations', []))}{suffix}"
+        )
 
 
 if __name__ == "__main__":

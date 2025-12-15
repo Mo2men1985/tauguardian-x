@@ -732,23 +732,27 @@ def build_eval_records(
                     try:
                         report = json.loads(report_path.read_text(encoding="utf-8"))
                         security_scan_scope = str(report.get("scan_scope", "postapply_fullfile_delta_v1"))
-                        security_scan_failed = bool(report.get("scan_failed", False))
+                        security_scan_failed = bool(
+                            report.get("scan_failed", False)
+                        ) or (report.get("scan_ok") is False)
                         security_violations = report.get("new_violations") or []
                         security_scan_error = report.get("scan_error")
-                    except Exception:
+                    except Exception as exc:
                         security_scan_scope = "postapply_fullfile_delta_v1"
                         security_scan_failed = True
                         security_violations = []
-                        security_scan_error = "failed to parse security report"
+                        security_scan_error = str(exc)
                 else:
-                    security_scan_scope = "postapply_report_missing"
-                    security_scan_failed = True
+                    security_report_found = False
                     security_violations = []
-                    security_scan_error = "post-apply security report missing"
                     if allow_diff_fallback:
                         security_scan_scope = "diff_fragment_fallback_v2"
                         security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
                         security_scan_error = None if not security_scan_failed else "diff-fragment fallback failed"
+                    else:
+                        security_scan_scope = "missing_report"
+                        security_scan_failed = True
+                        security_scan_error = "post-apply security report missing"
             else:
                 security_violations, security_scan_failed = extract_security_violations_from_patch(patch)
                 security_scan_error = None if not security_scan_failed else "diff-fragment fallback failed"
@@ -842,7 +846,10 @@ def main() -> None:
     parser.add_argument(
         "--allow-diff-fallback",
         action="store_true",
-        help="Allow diff-fragment fallback when security report is missing (off by default)",
+        help=(
+            "If set, allow diff-fragment fallback when security reports are missing. "
+            "Default: missing report => scan_failed=True"
+        ),
     )
 
     args = parser.parse_args()

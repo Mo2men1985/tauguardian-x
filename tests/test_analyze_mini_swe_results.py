@@ -312,7 +312,7 @@ def test_security_report_with_new_violation_vetoes(tmp_path: Path) -> None:
     assert row["final_decision"] == "VETO"
 
 
-def test_missing_report_marks_scan_failed_by_default(tmp_path: Path) -> None:
+def test_missing_report_defaults_to_scan_failed(tmp_path: Path) -> None:
     msa_dir = tmp_path / "msa"
     msa_dir.mkdir()
 
@@ -348,7 +348,7 @@ def test_missing_report_marks_scan_failed_by_default(tmp_path: Path) -> None:
 
     row = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
     assert row["security_report_found"] is False
-    assert row["security_scan_scope"] == "postapply_report_missing"
+    assert row["security_scan_scope"] == "missing_report"
     assert row["security_scan_failed"] is True
     assert row["sad_flag"] is False
     assert row["final_decision"] == "ABSTAIN"
