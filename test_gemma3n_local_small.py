@@ -1,10 +1,14 @@
-import torch
+import pytest
+
+torch = pytest.importorskip("torch")
+transformers = pytest.importorskip("transformers")
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 MODEL_PATH = r"E:\hf_cache\hub\models--google--gemma-3n-E4B-it\snapshots\e4c12697f6160380846ed13294cc7984c8c2ba9f"
 
 
-def main() -> None:
+@pytest.mark.skipif(not MODEL_PATH, reason="MODEL_PATH not configured")
+def test_gemma3n_small_loads() -> None:
     print("Loading tokenizer and model from:", MODEL_PATH)
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -64,6 +68,10 @@ def main() -> None:
     text = tokenizer.decode(outputs[0], skip_special_tokens=True)
     print("\n=== MODEL OUTPUT ===")
     print(text)
+
+
+def main() -> None:  # pragma: no cover - convenience entrypoint
+    test_gemma3n_small_loads()
 
 
 if __name__ == "__main__":
