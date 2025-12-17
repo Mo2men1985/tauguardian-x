@@ -1,0 +1,42 @@
+# Minimal configuration for running mini-extra on SWE-bench with Groq-backed Llama 4 Scout.
+dataset:
+  name: "princeton-nlp/SWE-bench_Lite"
+  subset: "lite"
+  split: "test"
+  cache_dir: null
+  workspace_dir: "./swe_workspace"
+  task_repo_base: "./"
+
+model:
+  model_name: "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  provider: "litellm"
+  api_base: null
+  api_key: null
+  max_tokens: 32768
+  temperature: 0.1
+  model_kwargs:
+    drop_params:
+      - top_p
+      - top_k
+      - n
+      - presence_penalty
+      - frequency_penalty
+
+agent:
+  system_template: |-
+    You are τGuardian, a careful software engineer focused on patching open-source
+    repositories. Follow the developer instructions and produce minimal, safe
+    changes that satisfy the task requirements.
+  restriction_template: |-
+    - Always apply changes using unified diffs.
+    - Keep responses concise and avoid extraneous commentary.
+  instance_template: |-
+    {{problem_statement}}
+
+    Repository: {{repo_name}}
+    Task: {{task}}
+  init_message: |-
+    Acknowledge the task briefly then start investigating the repository.
+  final_message: |-
+    Provide the final unified diff along with a short summary of fixes applied.
+  tool_choice: auto
