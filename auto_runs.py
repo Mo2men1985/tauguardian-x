@@ -302,7 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_swe.add_argument(
         "--dataset-name",
-        default="princeton-nlp/SWE-bench_Lite",
+        default="SWE-bench/SWE-bench_Lite",
         help="Dataset name to use when --run-eval is set.",
     )
     p_swe.set_defaults(func=cmd_swe_qwen)

@@ -85,9 +85,19 @@ def main() -> None:
         raise SystemExit(f"Run directory not found: {run_dir}")
 
     preds = extract_predictions(run_dir)
-    out_path = run_dir / "preds_filled.json"
-    out_path.write_text(json.dumps(preds, indent=2), encoding="utf-8")
-    print(f"[INFO] Wrote predictions to {out_path} ({len(preds)} instances)")
+
+    # Mapping form for τGuardian + post-apply scanner
+    preds_mapping_path = run_dir / "preds.json"
+    preds_mapping_path.write_text(json.dumps(preds, indent=2), encoding="utf-8")
+
+    # SWE-bench wrapper predictions (mapping is fine; loader accepts both)
+    preds_filled_path = run_dir / "preds_filled.json"
+    preds_filled_path.write_text(json.dumps(preds, indent=2), encoding="utf-8")
+
+    print(
+        f"[INFO] Wrote predictions to {preds_mapping_path} and "
+        f"{preds_filled_path} ({len(preds)} instances)"
+    )
 
 
 if __name__ == "__main__":

@@ -865,7 +865,7 @@ def build_eval_records(
     output_path: Path,
     instance_results_path: Optional[Path] = None,
     run_eval: bool = False,
-    dataset: str = "princeton-nlp/SWE-bench_Lite",
+    dataset: str = "SWE-bench/SWE-bench_Lite",
     timeout: int = 300,
     security_reports_dir: Optional[Path] = None,
     allow_diff_fallback: bool = False,
@@ -1143,7 +1143,7 @@ def main() -> None:
         "--run-eval", action="store_true", help="Run SWE-bench evaluation harness if installed"
     )
     parser.add_argument(
-        "--dataset", default="princeton-nlp/SWE-bench_Lite", help="SWE-bench dataset name for evaluation"
+        "--dataset", default="SWE-bench/SWE-bench_Lite", help="SWE-bench dataset name for evaluation"
     )
     parser.add_argument("--timeout", type=int, default=300, help="Timeout per instance for evaluation (seconds)")
     parser.add_argument(
