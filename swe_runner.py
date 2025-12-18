@@ -578,9 +578,9 @@ def load_swebench_tasks(
         return []
 
     if subset == "lite":
-        dataset_name = "princeton-nlp/SWE-bench_Lite"
+        dataset_name = "SWE-bench/SWE-bench_Lite"
     else:
-        dataset_name = "princeton-nlp/SWE-bench"
+        dataset_name = "SWE-bench/SWE-bench"
 
     try:
         dataset = load_dataset(dataset_name, split="test")

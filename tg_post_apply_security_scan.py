@@ -260,7 +260,7 @@ def _iter_selected(preds: List[Dict[str, Any]], only: Optional[Iterable[str]]) -
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run post-apply security scan for mini-SWE-agent outputs")
     parser.add_argument("--preds", required=True, help="Path to preds.json from mini-swe-agent")
-    parser.add_argument("--dataset", default="princeton-nlp/SWE-bench_Lite", help="SWE-bench dataset name")
+    parser.add_argument("--dataset", default="SWE-bench/SWE-bench_Lite", help="SWE-bench dataset name")
     parser.add_argument("--split", default="test", help="Dataset split")
     parser.add_argument("--outdir", required=True, help="Output directory for security reports")
     parser.add_argument("--only", default=None, help="Comma-separated instance ids to scan")
