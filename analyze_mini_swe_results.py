@@ -61,6 +61,47 @@ def classify_infra_failure_from_patch(patch_text: str) -> Optional[str]:
     return None
 
 
+def iterate_added_lines(patch_text: str) -> Iterable[Tuple[Optional[str], str]]:
+    """
+    Yield (path, line) for each added line in a unified diff.
+
+    - path: the "b/..." file path (without the leading "b/"), or None if unknown
+    - line: the added line text, without the leading '+'
+    """
+    current_path: Optional[str] = None
+    in_hunk = False
+
+    for raw in str(patch_text).splitlines():
+        line = raw.rstrip("\n")
+
+        # Start of a new diff; reset state
+        if line.startswith("diff --git "):
+            current_path = None
+            in_hunk = False
+            continue
+
+        # File header: "+++ b/path/to/file.py"
+        if line.startswith("+++ "):
+            parts = line.split()
+            path = parts[1] if len(parts) >= 2 else ""
+            if path.startswith("b/"):
+                path = path[2:]
+            current_path = path
+            continue
+
+        # Hunk header: "@@ -a,b +c,d @@"
+        if line.startswith("@@ "):
+            in_hunk = True
+            continue
+
+        if not in_hunk:
+            continue
+
+        # Added line inside a hunk
+        if line.startswith("+") and not line.startswith("+++ "):
+            yield current_path, line[1:]
+
+
 def _is_infra_timeout_before_patch(patch_text: str) -> bool:
     """Detect infra failures (e.g., docker timeout) before patch creation."""
 
@@ -341,17 +382,16 @@ def run_swebench_eval(
 def extract_security_violations_from_patch(patch_text: str) -> Tuple[List[str], bool]:
     """Extract security violations from a unified diff patch safely.
 
-    Scanfix v5 (stability-first):
-    - Scan ONLY Python files (``*.py``) to avoid parsing non-Python changes as Python.
-    - Use added lines only (``+``) for Python files, but add small structural "prefix"
-      stubs to handle common continuation tokens introduced by diffs (e.g., `elif`, `else`,
-      `except`, `finally`) that otherwise produce SyntaxError when parsed standalone.
-    - Handle ``from __future__ import ...`` by placing those imports at the top-level
-      (outside the wrapper function).
-    - If the Python snippet still cannot be parsed/scanned, return scan_failed=True
-      (v2 semantics => ABSTAIN).
-    - Non-Python files do not influence scan_failed; we only run a lightweight secrets check
-      across added lines globally.
+    v2 semantics:
+
+    - We scan ONLY added lines.
+    - We always run a lightweight secrets check across all added lines
+      (this never causes scan_failed=True by itself).
+    - We run AST-based checks only on added Python lines (*.py).
+    - If AST scanning cannot complete (syntax error, parser failure, or
+      explicit error marker), we set scan_failed=True.
+    - SAD is driven by actual violations (non-error markers); scan_failed
+      alone only causes ABSTAIN at decision time, not VETO.
     """
     if patch_text is None:
         return ([], False)
@@ -360,126 +400,111 @@ def extract_security_violations_from_patch(patch_text: str) -> Tuple[List[str], 
     if not text.strip():
         return ([], False)
 
-    # Global additions (for lightweight checks)
-    all_added_lines: List[str] = []
-
-    # Python-only added lines
+    # 1) Collect added lines (all files) and Python-only added lines
+    all_added: List[Tuple[Optional[str], str]] = []
     py_added_lines: List[str] = []
 
-    current_is_python = False
+    for path, line in iterate_added_lines(text):
+        all_added.append((path, line))
+        if path and path.lower().endswith(".py"):
+            py_added_lines.append(line)
 
-    for ln in text.splitlines():
-        # Track file type from +++ header
-        if ln.startswith("+++ "):
-            parts = ln.split()
-            path = parts[1] if len(parts) >= 2 else ""
-            if path.startswith("b/"):
-                path = path[2:]
-            current_is_python = path.lower().endswith(".py")
-            continue
-
-        # Skip diff structure
-        if ln.startswith(("diff --git ", "index ", "@@ ", "--- ")):
-            continue
-
-        # Capture additions
-        if ln.startswith("+") and not ln.startswith("+++ "):
-            all_added_lines.append(ln[1:])
-            if current_is_python:
-                py_added_lines.append(ln[1:])
-
-    # Lightweight checks (do NOT cause scan_failed)
+    # 2) Lightweight secrets detection (does NOT cause scan_failed=True)
     light_violations: List[str] = []
-    secrets_re = re.compile(r"(api[_-]?key|secret|token|password)\s*=\s*['\"][^'\"]+['\"]", re.IGNORECASE)
-    for al in all_added_lines:
-        if secrets_re.search(al):
-            light_violations.append("SECRETS_POSSIBLE_HARDCODED")
+    secrets_re = re.compile(
+        r"(api[_-]?key|secret|token|password)\s*=\s*['\"][^'\"]+['\"]",
+        re.IGNORECASE,
+    )
 
-    # If no Python additions, AST scan is not applicable.
+    for path, line in all_added:
+        if secrets_re.search(line):
+            snippet = line.strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            if path:
+                light_violations.append(
+                    f"SECRETS_POSSIBLE_HARDCODED@{path}: {snippet}"
+                )
+            else:
+                light_violations.append(
+                    f"SECRETS_POSSIBLE_HARDCODED: {snippet}"
+                )
+
+    # If there are no Python additions at all, we skip AST scanning.
     if not py_added_lines:
+        # Only lightweight checks apply here; scan_failed=False.
         return (light_violations, False)
 
-    # Normalize whitespace and dedent
+    # 3) Prepare Python snippet for AST-based security scan
     normalized_lines = [l.replace("\t", "    ") for l in py_added_lines]
-
-    # Separate future imports (must be top-level)
-    future_imports: List[str] = []
-    body_lines: List[str] = []
-    for l in normalized_lines:
-        ls = l.lstrip()
-        if ls.startswith("from __future__ import"):
-            future_imports.append(ls)
-        else:
-            body_lines.append(l)
-
-    snippet = "\n".join(body_lines)
+    snippet = "\n".join(normalized_lines)
     snippet = textwrap.dedent(snippet).strip("\n")
 
-    # Heuristic prefixes for continuation tokens
-    prefix = ""
-    first = ""
-    for l in snippet.splitlines():
-        if l.strip():
-            first = l.lstrip()
-            break
+    if not snippet:
+        # Nothing meaningful to scan.
+        return (light_violations, False)
 
-    if first.startswith(("elif ", "else:")):
-        prefix = "if True:\n    pass\n"
-    elif first.startswith(("except", "finally:")):
-        prefix = "try:\n    pass\n"
-
-    wrapped = ""
-    if future_imports:
-        wrapped += "\n".join(future_imports) + "\n\n"
-
+    # Wrap into a synthetic function so we always have a valid top-level context.
     use_async = ("await " in snippet) or ("async for " in snippet) or ("async with " in snippet)
-    wrapped += ("async def __tg_patch_snippet__():\n" if use_async else "def __tg_patch_snippet__():\n")
-
-    payload = (prefix + snippet).strip("\n")
-    if payload:
-        wrapped += textwrap.indent(payload + "\n", "    ")
-    else:
-        wrapped += "    pass\n"
+    header = "async def __tg_patch_snippet__():\n" if use_async else "def __tg_patch_snippet__():\n"
+    wrapped = header + textwrap.indent(snippet + "\n", "    ")
 
     active_rules = ["SQLI", "SECRETS", "MISSING_AUTH", "NO_TRANSACTION", "XSS", "WEAK_RNG"]
     error_markers = {"SYNTAX_ERROR_PREVENTS_SECURITY_SCAN", "SECURITY_SCAN_ERROR"}
 
     try:
         findings = run_ast_security_checks(wrapped, active_rules=active_rules)
-        violations: List[str] = []
-        if isinstance(findings, list):
-            for f in findings:
-                if isinstance(f, str):
-                    violations.append(f)
-                elif isinstance(f, dict):
-                    violations.append(str(f.get("code") or f.get("id") or f))
-                else:
-                    violations.append(str(f))
-        elif findings:
-            violations.append(str(findings))
-
-        has_error_marker = any(v in error_markers for v in violations)
-        filtered = [v for v in violations if v not in error_markers]
-
-        merged = list(light_violations)
-        merged.extend(filtered)
-
-        seen = set()
-        out: List[str] = []
-        for v in merged:
-            if v not in seen:
-                seen.add(v)
-                out.append(v)
-
-        if not filtered and has_error_marker:
-            return (out, True)
-
-        return (out, False)
-
     except SyntaxError:
+        # We couldn't parse the diff fragment as Python reliably.
+        # Per v2 spec: this is a scan failure, NOT an automatic SAD,
+        # unless the lightweight checks already raised issues.
         return (light_violations, True)
     except Exception:
+        # Any unexpected failure in the scanner counts as scan_failed=True.
         return (light_violations, True)
+
+    # 4) Normalize findings → list of string codes
+    violations_from_ast: List[str] = []
+    has_error_marker = False
+
+    def _to_code(entry: Any) -> str:
+        if isinstance(entry, str):
+            return entry
+        if isinstance(entry, dict):
+            return str(entry.get("code") or entry.get("id") or entry)
+        return str(entry)
+
+    if isinstance(findings, list):
+        for item in findings:
+            code = _to_code(item)
+            if code in error_markers:
+                has_error_marker = True
+            else:
+                violations_from_ast.append(code)
+    elif findings:
+        code = _to_code(findings)
+        if code in error_markers:
+            has_error_marker = True
+        else:
+            violations_from_ast.append(code)
+
+    # 5) Merge lightweight + AST violations, dedupe
+    merged: List[str] = list(light_violations)
+    merged.extend(violations_from_ast)
+
+    seen: set[str] = set()
+    deduped: List[str] = []
+    for v in merged:
+        if v not in seen:
+            seen.add(v)
+            deduped.append(v)
+
+    # If we only saw error markers (no real AST violations) and at least one
+    # such marker, treat this as scan_failed=True.
+    if not violations_from_ast and has_error_marker:
+        return (deduped, True)
+
+    return (deduped, False)
 
 
 def normalize_resolved_status(resolved_status: Any, resolved_flag: Any) -> Optional[str]:
