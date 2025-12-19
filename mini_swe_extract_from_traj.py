@@ -28,6 +28,15 @@ def extract_predictions(run_dir: Path) -> Dict[str, Dict[str, Any]]:
     preds: Dict[str, Dict[str, Any]] = {}
 
     traj_files = sorted(run_dir.glob("*.traj.json"))
+
+    # common mini-swe layout
+    if not traj_files:
+        traj_files = sorted((run_dir / "trajectories").glob("*.traj.json"))
+
+    # robust fallback: per-instance folders
+    if not traj_files:
+        traj_files = sorted(run_dir.rglob("*.traj.json"))
+
     if not traj_files:
         print(f"[WARN] No trajectory files found under {run_dir}")
 
