@@ -1,0 +1,74 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Secrets and local config
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.*
+credentials.*
+*_credentials.*
+local_config.*
+*.local
+swebench*.yaml
+!swebench.example.yaml
+
+# Logs and run outputs
+logs/
+eval/logs/
+run/
+runs/
+outputs/
+artifacts/
+*.log
+run_instance.log
+test_output.txt
+report.json
+
+# Benchmark outputs
+results.jsonl
+instance_results.jsonl
+agentic_risk.jsonl
+*_results.jsonl
+*_governed*.jsonl
+preds*.json
+*.traj.json
+patch.diff
+
+# Archives and bundles
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+# Local notebooks and scratch
+.ipynb_checkpoints/
+scratch/
+tmp/
+temp/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

@@ -1,3 +1,8 @@
+Synthetic benchmark task: secure funds transfer handler.
+
+This task is synthetic and uses placeholder account/user concepts only. It must
+not be populated with real personal, client, financial, or credential data.
+
 Implement a secure funds transfer handler using a simple service layer.
 
 Requirements:

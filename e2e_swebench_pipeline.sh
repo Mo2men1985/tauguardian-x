@@ -4,6 +4,19 @@ set -euo pipefail
 INSTANCE_ID=${1:-astropy__astropy-12907}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_BASE="runs/e2e_${INSTANCE_ID}_${TIMESTAMP}"
+CONFIG_PATH=${TAUGUARDIAN_SWEBENCH_CONFIG:-}
+MODEL_ID=${TAUGUARDIAN_MODEL_ID:-}
+
+if [[ -z "$CONFIG_PATH" ]]; then
+  echo "[ERROR] Set TAUGUARDIAN_SWEBENCH_CONFIG to a private config file path." >&2
+  echo "[ERROR] Do not commit provider configs or API keys to this repository." >&2
+  exit 2
+fi
+
+if [[ -z "$MODEL_ID" ]]; then
+  echo "[ERROR] Set TAUGUARDIAN_MODEL_ID to the private provider/model id for this run." >&2
+  exit 2
+fi
 
 mkdir -p "$OUT_BASE"
 
@@ -12,9 +25,9 @@ mini-extra swebench \
   --subset lite \
   --split test \
   --filter "$INSTANCE_ID" \
-  --config swebench_groq.yaml \
+  --config "$CONFIG_PATH" \
   --output "$OUT_BASE" \
-  --model "groq/meta-llama/llama-4-scout-17b-16e-instruct" \
+  --model "$MODEL_ID" \
   --workers 1
 
 echo "[STEP] Extracting predictions from trajectories"
@@ -39,7 +52,7 @@ echo "[STEP] Analyzing results and risk/coverage"
 python analyze_mini_swe_results.py \
   --msa-dir "$OUT_BASE" \
   --instance-results "$OUT_BASE/eval/instance_results.jsonl" \
-  --model-id "groq/meta-llama/llama-4-scout-17b-16e-instruct" \
+  --model-id "$MODEL_ID" \
   --output "$OUT_BASE/eval_enriched.jsonl" \
   --security-reports-dir "$OUT_BASE/security_reports"
 
