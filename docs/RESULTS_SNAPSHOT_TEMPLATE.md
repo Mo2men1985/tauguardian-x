@@ -1,15 +1,16 @@
-# Results Snapshot (Template)
+# Sanitized Results Snapshot Template
 
-Paste this section into your README and update values per run.
+Use this template only for sanitized aggregate summaries. Do not include raw
+logs, trajectories, patches, JSONL rows, provider configuration, or credentials.
 
 ---
 
 ## Latest Run Snapshot
 
-**Run ID:** `<run_id>`  
-**Date (Cairo):** `<YYYY-MM-DD>`  
-**Model:** `<provider/model>`  
-**Dataset:** SWE-bench `<subset>` / `<split>`  
+**Run ID:** `<run_id>`
+**Date (Cairo):** `<YYYY-MM-DD>`
+**Model:** `<provider/model>`
+**Dataset:** SWE-bench `<subset>` / `<split>`
 **Instances evaluated:** `<N>`
 
 ### Outcome Breakdown (Harness)
@@ -17,7 +18,7 @@ Paste this section into your README and update values per run.
 - **UNRESOLVED:** `<n_unresolved>`
 - **INFRA_ERROR (pre-patch):** `<n_infra_timeout>`
   - Label: `INFRA_TIMEOUT_BEFORE_PATCH`
-  - Meaning: container startup/pull timed out before a valid diff was produced
+  - Meaning: container startup/pull timed out before a valid diff was produced.
 
 ### Governance Breakdown (v2)
 - **OK:** `<n_ok>`
@@ -32,17 +33,16 @@ Paste this section into your README and update values per run.
 
 > Notes:
 > - Infra errors are excluded from accuracy/coverage because no patch was produced.
-> - “OK” is only emitted when strict criteria are met and no SAD/scan failure applies.
+> - `OK` is only emitted when strict criteria are met and no SAD/scan failure applies.
 
 ### Calibration (if enabled)
 - **ECE:** `<ece_value or n/a>`
-- **Reliability plot:** `artifacts/<run_id>/reliability.png`
-- **Confusion matrix:** `artifacts/<run_id>/confusion_matrix.png`
-- **Conformal risk control:** `<enabled/disabled>`; target α = `<alpha>`, calibrated τ = `<tau_calibrated>`
+- **Reliability plot:** `runs/<run_id>/reliability.png`
+- **Confusion matrix:** `runs/<run_id>/confusion_matrix.png`
+- **Conformal risk control:** `<enabled/disabled>`; target alpha = `<alpha>`, calibrated tau = `<tau_calibrated>`
 
-### Artifacts
-- Governed eval JSONL: `swe_<run_id>_eval.V2.jsonl`
-- MSA folder: `msa_<run_id>/`
-  - `preds.json`
-  - `exit_statuses_*.yaml`
-  - `instance_results.jsonl`
+### Artifact Handling
+- Raw governed eval JSONL remains outside source control.
+- Raw runner folders remain outside source control.
+- Public summaries must be aggregate, sanitized, and free of credentials or
+  personal-like data.
